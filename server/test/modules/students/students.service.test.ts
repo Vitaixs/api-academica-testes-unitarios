@@ -1,0 +1,13 @@
+import { StudentsService } from "../../../src/modules/students/students.service";
+import type { StudentRepository } from "../../../src/modules/students/students.repository";
+import { HttpError } from "../../../src/errors";
+const student = { ra: 123, name: "Ana" };
+const setup = () => { const repository: jest.Mocked<StudentRepository> = { create: jest.fn(), findAll: jest.fn(), findOne: jest.fn() }; return { repository, service: new StudentsService(repository) }; };
+const status = async (promise: Promise<unknown>, code: number) => { try { await promise; throw new Error("deveria falhar"); } catch (e) { expect(e).toBeInstanceOf(HttpError); expect((e as HttpError).statusCode).toBe(code); } };
+test("cria aluno válido", async () => { const { repository, service } = setup(); repository.create.mockResolvedValue(student); await expect(service.create(student)).resolves.toEqual(student); expect(repository.create).toHaveBeenCalledWith(student); });
+test("rejeita RA inválido sem chamar repositório", async () => { const { repository, service } = setup(); await status(service.create({ ra: 0, name: "Ana" }), 400); expect(repository.create).not.toHaveBeenCalled(); });
+test("converte RA duplicado em 409", async () => { const { repository, service } = setup(); repository.create.mockRejectedValue({ code: "23505" }); await status(service.create(student), 409); });
+test("retorna 404 quando aluno não existe", async () => { const { repository, service } = setup(); repository.findOne.mockResolvedValue(undefined); await status(service.findOne(123), 404); });
+test("propaga falha inesperada ao criar", async () => { const { repository, service } = setup(); const error = new Error("db"); repository.create.mockRejectedValue(error); await expect(service.create(student)).rejects.toBe(error); });
+test("lista alunos e chama findAll uma vez sem argumentos", async () => { const { repository, service } = setup(); repository.findAll.mockResolvedValue([student]); await expect(service.findAll()).resolves.toEqual([student]); expect(repository.findAll).toHaveBeenCalledTimes(1); expect(repository.findAll).toHaveBeenCalledWith(); });
+test("busca aluno existente pelo RA", async () => { const { repository, service } = setup(); repository.findOne.mockResolvedValue(student); await expect(service.findOne(123)).resolves.toEqual(student); expect(repository.findOne).toHaveBeenCalledTimes(1); expect(repository.findOne).toHaveBeenCalledWith(123); });

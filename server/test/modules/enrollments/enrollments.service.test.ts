@@ -1,0 +1,15 @@
+import { EnrollmentsService } from "../../../src/modules/enrollments/enrollments.service";
+import type { EnrollmentRepository } from "../../../src/modules/enrollments/enrollments.repository";
+import { HttpError } from "../../../src/errors";
+const enrolledAt = new Date("2026-01-01T00:00:00Z");
+const enrollment = { studentRa: 123, courseId: 1, enrolledAt };
+const setup = () => { const repository: jest.Mocked<EnrollmentRepository> = { create: jest.fn(), findAll: jest.fn(), findOne: jest.fn() }; return { repository, service: new EnrollmentsService(repository) }; };
+const status = async (promise: Promise<unknown>, code: number) => { try { await promise; throw new Error("deveria falhar"); } catch (e) { expect(e).toBeInstanceOf(HttpError); expect((e as HttpError).statusCode).toBe(code); } };
+test("cria matrícula com argumentos separados na ordem correta", async () => { const { repository, service } = setup(); repository.create.mockResolvedValue(enrollment); await expect(service.create({ studentRa: 123, courseId: 1 })).resolves.toEqual(enrollment); expect(repository.create).toHaveBeenCalledWith(123, 1); });
+test.each([{ studentRa: 0, courseId: 1 }, { studentRa: 123, courseId: 0 }])("rejeita chave inválida %p", async (input) => { const { repository, service } = setup(); await status(service.create(input), 400); expect(repository.create).not.toHaveBeenCalled(); });
+test("converte referência inexistente em 404", async () => { const { repository, service } = setup(); repository.create.mockRejectedValue({ code: "23503" }); await status(service.create({ studentRa: 123, courseId: 1 }), 404); });
+test("converte matrícula duplicada em 409", async () => { const { repository, service } = setup(); repository.create.mockRejectedValue({ code: "23505" }); await status(service.create({ studentRa: 123, courseId: 1 }), 409); });
+test("busca inexistente com ambos identificadores e retorna 404", async () => { const { repository, service } = setup(); repository.findOne.mockResolvedValue(undefined); await status(service.findOne(123, 1), 404); expect(repository.findOne).toHaveBeenCalledWith(123, 1); });
+test("propaga falha inesperada ao criar", async () => { const { repository, service } = setup(); const error = new Error("db"); repository.create.mockRejectedValue(error); await expect(service.create({ studentRa: 123, courseId: 1 })).rejects.toBe(error); });
+test("lista matrículas e chama findAll sem argumentos", async () => { const { repository, service } = setup(); repository.findAll.mockResolvedValue([enrollment]); await expect(service.findAll()).resolves.toEqual([enrollment]); expect(repository.findAll).toHaveBeenCalledTimes(1); expect(repository.findAll).toHaveBeenCalledWith(); });
+test("busca matrícula existente pelos dois identificadores", async () => { const { repository, service } = setup(); repository.findOne.mockResolvedValue(enrollment); await expect(service.findOne(123, 1)).resolves.toEqual(enrollment); expect(repository.findOne).toHaveBeenCalledTimes(1); expect(repository.findOne).toHaveBeenCalledWith(123, 1); });
